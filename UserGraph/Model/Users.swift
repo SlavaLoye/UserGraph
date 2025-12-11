@@ -1,11 +1,13 @@
 //
-//  Untitled.swift
+//  Users.swift
 //  UserGraph
 //
 //  Created by Viacheslav Loie on 11.12.2025.
 //
 
 import Foundation
+
+// MARK: - DTO models for /api/episode/users/
 
 struct UsersEnvelope: Decodable {
     let users: [UserDTO]

@@ -17,11 +17,35 @@ struct APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+
+        // Validate HTTP status
+        guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
+        guard (200..<300).contains(http.statusCode) else {
+            // Map common HTTP failures
+            switch http.statusCode {
+            case 401: throw URLError(.userAuthenticationRequired)
+            case 403: throw URLError(.noPermissionsToReadFile)
+            case 404: throw URLError(.fileDoesNotExist)
+            case 408: throw URLError(.timedOut)
+            case 500...599: throw URLError(.badServerResponse)
+            default: throw URLError(.badServerResponse)
+            }
+        }
 
-        let decoded = try JSONDecoder().decode(UsersEnvelope.self, from: data)
-        return decoded.users
+        // Optional: Validate Content-Type contains "application/json"
+        if let contentType = http.value(forHTTPHeaderField: "Content-Type"),
+           contentType.lowercased().contains("json") == false {
+            // Not fatal if server omits header; only throw if clearly wrong
+            // throw URLError(.cannotParseResponse)
+        }
+
+        let decoder = JSONDecoder()
+        // If backend uses snake_case keys, this will map them to camelCase properties.
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        // Keep default strategies otherwise.
+        let envelope = try decoder.decode(UsersEnvelope.self, from: data)
+        return envelope.users
     }
 }
