@@ -10,6 +10,7 @@ import SwiftData
 
 struct StatsPlaceholderView: View {
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.modelContext) private var modelContext
 
     // Берём пользователей из SwiftData и используем первых трёх
     @Query(sort: \User.username, order: .forward, animation: .default)
@@ -108,10 +109,53 @@ struct StatsPlaceholderView: View {
                 }
             }
         }
+        // 1) Если локально пусто — подтянуть пользователей из сети (как в UsersView.initialLoadIfNeeded).
+        .task {
+            do {
+                _ = try await repository().users(allowNetworkIfEmpty: true)
+            } catch {
+                // Мягко игнорируем ошибку на этом экране, UsersView покажет ошибку явнее
+                #if DEBUG
+                print("StatsPlaceholderView: initial users load failed: \(error)")
+                #endif
+            }
+        }
+        // 2) Префетч аватаров topVisitors при изменении данных (после первой синхронизации)
+        .onChange(of: allUsers.map(\.id)) { _, _ in
+            prefetchTopVisitors()
+        }
+        .onAppear {
+            prefetchTopVisitors()
+        }
     }
 
     // Примерные высоты столбиков для скелетона
     private var sampleBars: [CGFloat] { [24, 48, 32, 60, 42, 72, 38, 56, 28, 64] }
+
+    private func repository() -> UsersRepository {
+        UsersRepository(context: modelContext)
+    }
+
+    private func prefetchTopVisitors() {
+        // Соберём URL аватаров и дёрнем загрузку в фоновом таске.
+        let urls = topVisitors.compactMap { u in
+            u.files.first(where: { $0.type.lowercased() == "avatar" })?.url
+        }
+        guard !urls.isEmpty else { return }
+
+        Task.detached(priority: .utility) {
+            for url in urls {
+                // Простой префетч: попросим URLSession прогреть URLCache.
+                var req = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 30)
+                req.httpMethod = "GET"
+                do {
+                    _ = try await URLSession.shared.data(for: req)
+                } catch {
+                    // прогрев необязателен — ошибки можно игнорировать
+                }
+            }
+        }
+    }
 }
 
 // Ряд в списке «топ‑посетителей»
@@ -186,3 +230,4 @@ private struct GlassCard<Content: View>: View {
             .shadow(color: Theme.cardShadow(for: scheme), radius: 20, x: 0, y: 12)
     }
 }
+
