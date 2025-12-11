@@ -16,6 +16,7 @@ struct ProfileView: View {
     @Query private var owners: [Owner]
 
     @State private var isPresentingSetup = false
+    @State private var showLogoutConfirm = false
 
     init() {
         _owners = Query()
@@ -51,9 +52,17 @@ struct ProfileView: View {
                             }
 
                             Button(role: .destructive) {
-                                logout()
+                                showLogoutConfirm = true
                             } label: {
                                 DestructiveButtonLabel(title: "Выйти", systemImage: "rectangle.portrait.and.arrow.right")
+                            }
+                            .alert("Вы действительно хотите выйти?", isPresented: $showLogoutConfirm) {
+                                Button("Отмена", role: .cancel) { }
+                                Button("Выйти", role: .destructive) {
+                                    logout()
+                                }
+                            } message: {
+                                Text("Вы сможете войти снова в любой момент.")
                             }
                         }
                         .padding(.top, 6)
@@ -269,3 +278,4 @@ private struct EmptyStateCard: View {
         }
     }
 }
+
