@@ -228,13 +228,50 @@ struct OwnerSetupView: View {
             username = existing.username
             sex = existing.sex.isEmpty ? sex : existing.sex
             birthDate = existing.birthDate
-            if let url = existing.avatarURL, let data = try? Data(contentsOf: url) {
-                avatarImageData = data
+
+            // Попробуем прочитать данные по сохранённому URL
+            var loadedData: Data? = nil
+            if let url = existing.avatarURL, FileManager.default.fileExists(atPath: url.path) {
+                loadedData = try? Data(contentsOf: url)
             }
+
+            // Если по сохранённому абсолютному URL файл не найден (часто после перебилда),
+            // попробуем восстановить новый путь в текущем контейнере (Application Support/Owner/owner_avatar.jpg)
+            if loadedData == nil {
+                if let recoveredURL = try? currentOwnerAvatarURLInThisInstall(),
+                   FileManager.default.fileExists(atPath: recoveredURL.path) {
+                    loadedData = try? Data(contentsOf: recoveredURL)
+
+                    // Если удалось восстановить — обновим ссылку в модели и сохраним
+                    if loadedData != nil {
+                        existing.avatarURL = recoveredURL
+                        try? modelContext.save()
+                        #if DEBUG
+                        print("OwnerSetupView.preload: recovered avatarURL to \(recoveredURL.path)")
+                        #endif
+                    }
+                }
+            }
+
+            avatarImageData = loadedData
             print("OwnerSetupView.preload: found existing owner for \(e)")
         } else {
             print("OwnerSetupView.preload: no owner for \(e)")
         }
+    }
+
+    // Возвращает ожидаемый путь к аватару владельца в текущей установке приложения
+    private func currentOwnerAvatarURLInThisInstall() throws -> URL {
+        let fm = FileManager.default
+        let appSupportDir = try fm.url(for: .applicationSupportDirectory,
+                                       in: .userDomainMask,
+                                       appropriateFor: nil,
+                                       create: true)
+        let dir = appSupportDir.appendingPathComponent("Owner", isDirectory: true)
+        if !fm.fileExists(atPath: dir.path) {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        return dir.appendingPathComponent("owner_avatar.jpg")
     }
 
     private func save() {
@@ -308,7 +345,19 @@ struct OwnerSetupView: View {
     private func persistAvatarIfNeeded() async throws -> URL? {
         guard let data = avatarImageData else { return nil }
         let fm = FileManager.default
-        let dir = fm.urls(for: .cachesDirectory, in: .userDomainMask).first!
+
+        // Use Application Support instead of Caches for persistence across app restarts/builds
+        let appSupportDir = try fm.url(for: .applicationSupportDirectory,
+                                       in: .userDomainMask,
+                                       appropriateFor: nil,
+                                       create: true)
+
+        // Create app-specific subfolder (optional but tidy)
+        let dir = appSupportDir.appendingPathComponent("Owner", isDirectory: true)
+        if !fm.fileExists(atPath: dir.path) {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+
         let fileURL = dir.appendingPathComponent("owner_avatar.jpg")
         try data.write(to: fileURL, options: .atomic)
         return fileURL
