@@ -12,7 +12,10 @@ import SwiftData
 struct UserGraphApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Session.self,
+            User.self,
+            UserFile.self,
+            Owner.self // ВАЖНО: добавить Owner в схему
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
